@@ -1,0 +1,994 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Notepad Conversacional</title>
+    <!-- Carregamento do Tailwind CSS para um design responsivo e moderno -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Configuração da fonte Inter e estilos globais */
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f4f7f9;
+            transition: background-color 0.3s, color 0.3s;
+        }
+        .tab-button.active {
+            border-bottom: 3px solid #10b981; /* Cor esmeralda */
+            background-color: #ffffff;
+            font-weight: 600;
+        }
+        .chat-container {
+            flex-grow: 1;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column-reverse; /* Para que as mensagens novas apareçam em baixo */
+            padding-bottom: 1rem;
+        }
+        .message-user {
+            align-self: flex-end;
+            background-color: #10b981; /* Esmeralda */
+            color: white;
+            border-radius: 12px 12px 0 12px;
+        }
+        .message-ai {
+            align-self: flex-start;
+            background-color: #e5e7eb; /* Cinzento claro */
+            color: #1f2937;
+            border-radius: 12px 12px 12px 0;
+        }
+        .message-loading {
+            align-self: flex-start;
+            background-color: #bfdbfe; /* Azul suave */
+            color: #1f2937;
+            border-radius: 12px 12px 12px 0;
+            animation: pulse 1.5s infinite;
+        }
+        @keyframes pulse {
+            0% { opacity: 0.5; }
+            50% { opacity: 1; }
+            100% { opacity: 0.5; }
+        }
+
+        /* --- Estilos do Tema Escuro (Dark Mode) --- */
+        body.dark {
+            background-color: #1f2937; /* Gray 800 */
+            color: #f3f4f6; /* Gray 100 */
+        }
+        body.dark #sidebar {
+            background-color: #111827; /* Gray 900 */
+            border-color: #374151; /* Gray 700 */
+        }
+        body.dark .tab-button:not(.active) {
+            background-color: #1f2937;
+            color: #d1d5db; /* Gray 300 */
+        }
+        body.dark .tab-button:hover:not(.active) {
+            background-color: #374151; /* Gray 700 */
+        }
+        body.dark .tab-button.active {
+            background-color: #374151;
+            border-bottom-color: #10b981;
+        }
+        body.dark #editor-area {
+            background-color: #1f2937;
+            box-shadow: none; 
+        }
+        body.dark #note-title {
+            background-color: transparent;
+            border-bottom-color: #4b5563; /* Gray 600 */
+            color: #f3f4f6;
+        }
+        body.dark #note-title::placeholder {
+            color: #9ca3af; /* Gray 400 */
+        }
+        body.dark #chat-placeholder {
+            color: #9ca3af;
+        }
+        body.dark .message-ai {
+            background-color: #374151; /* Gray 700 */
+            color: #f3f4f6;
+        }
+        body.dark #follow-up-query {
+            background-color: #374151;
+            border-color: #4b5563;
+            color: #f3f4f6;
+        }
+        body.dark .action-btn {
+            background-color: #374151;
+            color: #d1d5db;
+        }
+        body.dark .action-btn:hover:not(.disabled) {
+            background-color: #4b5563;
+        }
+        body.dark #clear-btn-ball, body.dark #clear-title-btn {
+            background-color: #b91c1c; /* Vermelho escuro */
+            color: #fee2e2;
+        }
+        body.dark #clear-btn-ball:hover, body.dark #clear-title-btn:hover {
+            background-color: #ef4444;
+        }
+        body.dark .ai-select-btn {
+            background-color: #374151;
+            color: #d1d5db;
+        }
+        body.dark .ai-select-btn.active {
+            background-color: #4f46e5; /* Indigo 600 - mantém cor para destaque */
+            color: white;
+        }
+    </style>
+</head>
+<body>
+
+<div id="app" class="flex flex-col md:flex-row h-screen">
+
+    <!-- Painel Lateral (Abas e Botão Novo) -->
+    <div id="sidebar" class="sidebar-container w-full md:w-64 bg-gray-50 border-r border-gray-200 flex-shrink-0">
+        <div class="p-4 border-b border-gray-200 flex justify-between items-center">
+            <h1 class="text-xl font-bold text-gray-800 dark:text-gray-100">AI Notepad Chat</h1>
+            <button 
+                id="dark-mode-toggle-btn" 
+                title="Alternar Tema Escuro/Claro" 
+                class="p-2 rounded-full text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 transition duration-150"
+            >
+                <!-- O ÍCONE é definido pelo JS -->
+            </button>
+        </div>
+
+        <div class="px-4 pt-2 pb-4 border-b border-gray-200 dark:border-gray-700">
+            <p id="auth-status" class="text-xs text-gray-500 dark:text-gray-400 mt-1 mb-3">A carregar autenticação...</p>
+            <button id="new-note-btn" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-2 px-4 rounded-lg shadow-md transition duration-150 ease-in-out">
+                + Nova Conversa
+            </button>
+        </div>
+        
+        <!-- Lista de Abas (Notas) -->
+        <div id="tabs-container" class="space-y-1 px-4 py-4">
+            <!-- Abas serão injetadas aqui -->
+        </div>
+    </div>
+
+    <!-- Área Principal de Edição e Resultados -->
+    <div id="main-content" class="flex-grow p-4 md:p-8 overflow-y-auto">
+        <div id="editor-area" class="bg-white p-6 rounded-xl shadow-lg h-full flex flex-col">
+            
+            <!-- Título/Tópico da Conversa com botão de limpar -->
+            <div class="flex items-center w-full mb-4 space-x-2">
+                <input 
+                    id="note-title" 
+                    type="text" 
+                    placeholder="Insira o título/tópico da conversa (Ex: Melhores Jogadores do FC Porto)"
+                    class="flex-grow text-2xl font-semibold border-b-2 border-gray-200 focus:border-indigo-500 outline-none pb-2 transition duration-150 rounded-md p-1"
+                    disabled
+                >
+                <button 
+                    id="clear-title-btn" 
+                    title="Apagar o título da conversa" 
+                    class="bg-gray-100 text-gray-600 hover:bg-red-200 dark:bg-red-700 dark:text-red-100 p-2 rounded-full transition duration-150 disabled:opacity-30"
+                    disabled
+                >
+                    <!-- Icone de Cruz (Limpar) -->
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                </button>
+            </div>
+
+            <!-- Controlo de IA e Botão de Apagar -->
+            <div id="ai-control" class="flex flex-col sm:flex-row justify-between items-center space-y-4 sm:space-y-0 sm:space-x-4 mb-6">
+                <div class="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-4">
+                    <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Conversar com:</span>
+                    <div id="ai-buttons" class="flex flex-wrap gap-2">
+                        <!-- Botões de Seleção de IA (Gemini, ChatGPT, Mistral, Claude) -->
+                        <button data-ai="Gemini" class="ai-select-btn px-4 py-2 text-sm font-medium bg-gray-100 text-gray-800 rounded-full hover:bg-indigo-100 transition duration-150 disabled:opacity-50" disabled>Gemini</button>
+                        <button data-ai="ChatGPT" class="ai-select-btn px-4 py-2 text-sm font-medium bg-gray-100 text-gray-800 rounded-full hover:bg-indigo-100 transition duration-150 disabled:opacity-50" disabled>ChatGPT</button>
+                        <button data-ai="Mistral" class="ai-select-btn px-4 py-2 text-sm font-medium bg-gray-100 text-gray-800 rounded-full hover:bg-indigo-100 transition duration-150 disabled:opacity-50" disabled>Mistral</button>
+                        <button data-ai="Claude" class="ai-select-btn px-4 py-2 text-sm font-medium bg-gray-100 text-gray-800 rounded-full hover:bg-indigo-100 transition duration-150 disabled:opacity-50" disabled>Claude</button>
+                    </div>
+                </div>
+
+                <button 
+                    id="delete-note-btn" 
+                    class="bg-red-500 hover:bg-red-600 text-white font-medium py-2 px-4 rounded-lg shadow-md transition duration-150 ease-in-out disabled:opacity-50 flex items-center space-x-2"
+                    disabled
+                >
+                    <!-- Icone do Caixote do Lixo -->
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                        <path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.728-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd" />
+                    </svg>
+                    <span>Apagar Conversa</span>
+                </button>
+            </div>
+
+            <!-- Área de Chat -->
+            <div class="flex-grow flex flex-col min-h-[300px] border border-gray-300 dark:border-gray-700 rounded-lg p-3 mb-4 bg-gray-50 dark:bg-gray-800">
+                <div id="chat-history" class="chat-container space-y-4">
+                    <!-- Mensagens de chat dinâmicas aqui -->
+                </div>
+                <div id="chat-placeholder" class="text-center text-gray-500 dark:text-gray-400 p-4" style="display: none;">
+                    Selecione uma IA para iniciar a conversa.
+                </div>
+            </div>
+            
+            <!-- Input para Follow-up com botões Copiar/Colar/Apagar (bola) -->
+            <div id="follow-up-input-group" class="flex space-x-2 mt-auto">
+                <div class="flex-grow relative"> 
+                    <input 
+                        id="follow-up-query" 
+                        type="text" 
+                        placeholder="Envie uma nova pergunta para a IA ativa..." 
+                        class="w-full border border-gray-300 p-3 pr-12 rounded-lg focus:ring-indigo-500 focus:border-indigo-500 transition duration-150 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-50"
+                        disabled
+                    >
+                    <!-- Botão "Bola" para apagar o prompt -->
+                    <button 
+                        id="clear-btn-ball" 
+                        title="Apagar o texto do campo" 
+                        class="absolute right-3 top-1/2 -translate-y-1/2 w-6 h-6 flex items-center justify-center rounded-full bg-gray-300 hover:bg-gray-400 text-gray-700 dark:bg-gray-600 dark:hover:bg-gray-500 dark:text-gray-200 transition duration-150 disabled:opacity-0"
+                        style="display: none;" 
+                        disabled
+                    >
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <line x1="18" y1="6" x2="6" y2="18"></line>
+                            <line x1="6" y1="6" x2="18" y2="18"></line>
+                        </svg>
+                    </button>
+                </div>
+                
+                <!-- Botões de Ação do Input (Colar e Copiar mantidos) -->
+                <button id="copy-btn" title="Copiar texto para a área de transferência" class="action-btn bg-gray-200 hover:bg-gray-300 text-gray-800 dark:text-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 font-medium py-3 px-3 rounded-lg shadow-sm transition duration-150 disabled:opacity-50" disabled>
+                    <!-- Icone Copiar (Documentos sobrepostos) -->
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M8 3a1 1 0 011-1h2a1 1 0 110 2H9a1 1 0 01-1-1z" /><path d="M6 3a2 2 0 00-2 2v11a2 2 0 002 2h8a2 2 0 002-2V5a2 2 0 00-2-2 3 3 0 01-3 3H9a3 3 0 01-3-3z" /></svg>
+                </button>
+                <button id="paste-btn" title="Colar texto manualmente usando Ctrl+V ou Cmd+V" class="action-btn bg-gray-200 hover:bg-gray-300 text-gray-800 dark:text-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 font-medium py-3 px-3 rounded-lg shadow-sm transition duration-150 disabled:opacity-50" disabled>
+                    <!-- Ícone de Área de Transferência/Clipboard (como solicitado) -->
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="h-5 w-5">
+                        <path d="M15 2H9a2 2 0 0 0-2 2v2a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2z"></path>
+                        <path d="M4 8h16"></path>
+                        <path d="M16 8v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8"></path>
+                        <path d="M8 12h4"></path>
+                        <path d="M8 16h4"></path>
+                    </svg>
+                </button>
+
+                <button 
+                    id="send-follow-up-btn" 
+                    class="bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-3 px-5 rounded-lg shadow-md transition duration-150 ease-in-out disabled:opacity-50"
+                    disabled
+                >
+                    Enviar
+                </button>
+            </div>
+            
+            <p id="saving-status" class="text-right text-xs text-gray-500 dark:text-gray-400 mt-4">Pronto.</p>
+        </div>
+    </div>
+</div>
+
+<!-- Scripts do Firebase -->
+<script type="module">
+    // Importações necessárias do Firebase
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+    import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+    import { getFirestore, doc, setDoc, deleteDoc, onSnapshot, collection, query } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+    import { setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+    
+    setLogLevel('Debug');
+
+    // =================================================================================================
+    // --- CONFIGURAÇÃO PARA USO EXTERNO (CRÍTICO PARA HOSTING NO GITHUB PAGES) ---
+    // =================================================================================================
+
+    // 1. CHAVE DE API DO GEMINI:
+    // Se estiver a correr a aplicação fora do ambiente Canvas, *DEVE* substituir "" pela sua chave de API pessoal.
+    // Exemplo: const apiKey = "AIzaSy...SUA_CHAVE_AQUI...XYZ"; 
+    const apiKey = "AIzaSyBVs171iWDtRX6D_WITa4WS4uFU-PUUcno"; 
+
+    // 2. CONFIGURAÇÃO DO FIREBASE (PARA GUARDAR O HISTÓRICO):
+    // Se quiser guardar o histórico, precisa de criar um projeto Firebase e substituir 'null' pela sua configuração.
+    // CASO CONTRÁRIO, o histórico NÃO SERÁ GUARDADO.
+    
+    // Variáveis globais (fornecidas pelo ambiente - Mantenha se quiser que funcione aqui)
+    const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+    // Substitua 'null' pela sua config se estiver a alojar externamente e quiser persistência:
+    const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null; 
+    const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+
+    if (!firebaseConfig) {
+        console.error("Firebase config não encontrado. A persistência de dados não funcionará. A aplicação irá correr sem guardar histórico.");
+        document.getElementById('auth-status').textContent = "AVISO: Histórico desativado (Firebase não configurado).";
+    }
+
+    // =================================================================================================
+    // --- FIM DA CONFIGURAÇÃO EXTERNA ---
+    // =================================================================================================
+
+    // Inicialização e autenticação do Firebase
+    let app, db, auth, userId = null;
+    let notes = {}; 
+    let unsentQueries = {}; 
+    let activeNoteId = null;
+    let activeAI = 'Gemini'; // Padrão: Gemini
+    let isGenerating = false; 
+
+    const authStatusEl = document.getElementById('auth-status');
+    const savingStatusEl = document.getElementById('saving-status');
+    const tabsContainerEl = document.getElementById('tabs-container');
+    const noteTitleEl = document.getElementById('note-title');
+    const chatHistoryEl = document.getElementById('chat-history');
+    const chatPlaceholderEl = document.getElementById('chat-placeholder');
+    const followUpQueryEl = document.getElementById('follow-up-query');
+    const sendFollowUpBtn = document.getElementById('send-follow-up-btn');
+    const newNoteBtn = document.getElementById('new-note-btn');
+    const deleteNoteBtn = document.getElementById('delete-note-btn');
+    const aiButtons = document.querySelectorAll('.ai-select-btn');
+    
+    // Elementos dos botões de ação e Dark Mode
+    const copyBtn = document.getElementById('copy-btn');
+    const pasteBtn = document.getElementById('paste-btn');
+    const clearTitleBtn = document.getElementById('clear-title-btn'); 
+    const darkModeToggleBtn = document.getElementById('dark-mode-toggle-btn');
+    
+    // Novo botão de limpar prompt (bola)
+    const clearBtnBall = document.getElementById('clear-btn-ball');
+
+
+    // --- Funções Auxiliares de UI/Estado ---
+
+    /**
+     * Habilita/Desabilita os campos de edição e chat
+     * @param {boolean} enable 
+     */
+    function setEditorEnabled(enable) {
+        // Desabilita sempre se estiver a gerar
+        const finalState = enable && !isGenerating; 
+        
+        noteTitleEl.disabled = !finalState;
+        deleteNoteBtn.disabled = !finalState;
+        followUpQueryEl.disabled = !finalState;
+        sendFollowUpBtn.disabled = !finalState;
+        
+        copyBtn.disabled = !finalState;
+        pasteBtn.disabled = !finalState;
+        clearTitleBtn.disabled = !finalState; 
+        
+        aiButtons.forEach(btn => btn.disabled = !finalState);
+        
+        // O botão de limpar (bola) é controlado pelo 'input' e pelo 'finalState'
+        if (finalState) {
+            noteTitleEl.classList.remove('bg-gray-50');
+            followUpQueryEl.classList.remove('bg-gray-50');
+            if (followUpQueryEl.value.length > 0) {
+                 clearBtnBall.style.display = 'flex';
+                 clearBtnBall.disabled = false;
+            }
+        } else {
+            noteTitleEl.classList.add('bg-gray-50');
+            followUpQueryEl.classList.add('bg-gray-50');
+            clearBtnBall.style.display = 'none';
+            clearBtnBall.disabled = true;
+        }
+    }
+    
+    /**
+     * Alterna a visibilidade do botão de limpar prompt (bola)
+     */
+    function toggleClearButton() {
+        if (!followUpQueryEl.disabled && followUpQueryEl.value.length > 0) {
+            clearBtnBall.style.display = 'flex';
+            clearBtnBall.disabled = false;
+        } else {
+            clearBtnBall.style.display = 'none';
+            clearBtnBall.disabled = true;
+        }
+    }
+
+
+    /**
+     * Limpa os campos de edição e chat
+     */
+    function clearEditor() {
+        noteTitleEl.value = '';
+        chatHistoryEl.innerHTML = '';
+        followUpQueryEl.value = '';
+        chatPlaceholderEl.textContent = 'Selecione uma IA para iniciar a conversa.';
+        chatPlaceholderEl.style.display = 'block';
+        // Garante que o botão Gemini está ativo visualmente no estado limpo
+        aiButtons.forEach(btn => {
+            btn.classList.remove('active', 'bg-indigo-500', 'text-white');
+            if (btn.getAttribute('data-ai') === 'Gemini') {
+                btn.classList.add('active', 'bg-indigo-500', 'text-white');
+            }
+        });
+        toggleClearButton();
+    }
+
+    /**
+     * Cria e adiciona um elemento de mensagem ao chat.
+     * @param {string} role 'user', 'ai', ou 'loading'
+     * @param {string} text Conteúdo da mensagem
+     * @param {string} id Opcional: ID para referenciar o elemento (útil para o loading spinner)
+     */
+    function renderMessage(role, text, id = null) {
+        const messageEl = document.createElement('div');
+        messageEl.id = id;
+        
+        let styleClass = '';
+        if (role === 'user') {
+            styleClass = 'message-user';
+        } else if (role === 'ai') {
+            styleClass = 'message-ai';
+        } else if (role === 'loading') {
+            styleClass = 'message-loading';
+        }
+
+        messageEl.className = `max-w-[80%] p-3 shadow-md text-sm whitespace-pre-wrap ${styleClass}`;
+        messageEl.textContent = text;
+        chatHistoryEl.appendChild(messageEl);
+
+        chatHistoryEl.scrollTop = chatHistoryEl.scrollHeight;
+    }
+
+
+    // --- Funções do Firestore (Persistência de Dados) ---
+
+    function getNotesCollectionRef() {
+        if (db && userId) {
+            const path = `artifacts/${appId}/users/${userId}/ai_notes_chat`; 
+            return collection(db, path);
+        }
+        console.warn("Firestore ou userId não está pronto. A persistência está desativada.");
+        return null;
+    }
+
+    async function saveNoteToFirestore(id, data) {
+        const collectionRef = getNotesCollectionRef();
+        if (!collectionRef) return; // Sai se não houver Firebase
+        
+        try {
+            savingStatusEl.textContent = 'A guardar...';
+            const noteRef = doc(collectionRef, id);
+            await setDoc(noteRef, data, { merge: true });
+            savingStatusEl.textContent = 'Guardado!';
+        } catch (error) {
+            console.error("Erro ao guardar nota:", error);
+            savingStatusEl.textContent = 'Erro ao guardar!';
+        }
+    }
+
+    async function deleteNoteFromFirestore() {
+        if (!activeNoteId || !notes[activeNoteId]) return;
+        const collectionRef = getNotesCollectionRef();
+        if (!collectionRef) return; // Sai se não houver Firebase
+
+        try {
+            // Usa modal simples em vez de window.confirm()
+            const confirmation = window.confirm("Tem a certeza que deseja apagar esta conversa?");
+            if (!confirmation) {
+                 savingStatusEl.textContent = 'Pronto.';
+                 return;
+            }
+
+            savingStatusEl.textContent = 'A apagar...';
+            const noteRef = doc(collectionRef, activeNoteId);
+            await deleteDoc(noteRef);
+            
+            delete notes[activeNoteId];
+            delete unsentQueries[activeNoteId]; 
+
+            activeNoteId = Object.keys(notes).length > 0 ? Object.keys(notes).sort((a, b) => notes[b].timestamp - notes[a].timestamp)[0] : null; 
+            
+            if (activeNoteId) {
+                renderTabs();
+                loadNote(activeNoteId);
+            } else {
+                renderTabs();
+                clearEditor();
+                setEditorEnabled(false);
+            }
+
+            savingStatusEl.textContent = 'Conversa apagada!';
+        } catch (error) {
+            console.error("Erro ao apagar nota:", error);
+            savingStatusEl.textContent = 'Erro ao apagar!';
+        }
+    }
+
+    // --- Lógica de Chat e UI ---
+    
+    function renderChatHistory(aiName) {
+        if (!activeNoteId || !notes[activeNoteId]) return;
+
+        const note = notes[activeNoteId];
+        const chat = note.results[aiName];
+
+        activeAI = aiName;
+
+        // Atualiza o estado visual dos botões
+        aiButtons.forEach(btn => {
+            // Garante que o tema escuro/claro aplica o estilo base corretamente
+            btn.classList.remove('active', 'bg-indigo-500', 'text-white', 'bg-gray-100');
+            btn.classList.add(document.body.classList.contains('dark') ? 'bg-gray-700' : 'bg-gray-100', 'text-gray-800');
+            
+            if (btn.getAttribute('data-ai') === aiName) {
+                btn.classList.add('active', 'bg-indigo-500', 'text-white');
+                btn.classList.remove('bg-gray-100', 'bg-gray-700', 'text-gray-800');
+            }
+        });
+
+        chatHistoryEl.innerHTML = '';
+        chatHistoryEl.style.flexDirection = 'column'; 
+        chatHistoryEl.classList.add('space-y-4'); 
+
+        if (!chat || chat.length === 0) {
+            chatPlaceholderEl.textContent = `Clique em Enviar para iniciar a conversa com ${aiName}.`;
+            chatPlaceholderEl.style.display = 'block';
+            return;
+        }
+
+        chatPlaceholderEl.style.display = 'none';
+
+        // Renderiza as mensagens da ordem que estão (deve ser do mais antigo para o mais recente)
+        chat.forEach(msg => renderMessage(msg.role, msg.text));
+        
+        chatHistoryEl.scrollTop = chatHistoryEl.scrollHeight;
+    }
+
+    function loadNote(id) {
+        if (!notes[id]) return;
+
+        activeNoteId = id;
+        const note = notes[id];
+
+        // ATUALIZADO: Inicializa os slots, incluindo Claude
+        if (!unsentQueries[id]) {
+            unsentQueries[id] = { "Gemini": '', "ChatGPT": '', "Mistral": '', "Claude": '' }; 
+        }
+        
+        noteTitleEl.value = note.title;
+        
+        setEditorEnabled(true);
+        renderTabs(); 
+
+        const selectedAI = note.selectedAI || 'Gemini'; 
+        renderChatHistory(selectedAI);
+
+        const savedQuery = unsentQueries[activeNoteId]?.[selectedAI] || '';
+        followUpQueryEl.value = savedQuery;
+        toggleClearButton();
+    }
+
+    function renderTabs() {
+        tabsContainerEl.innerHTML = ''; 
+        const noteIds = Object.keys(notes);
+        
+        noteIds.sort((a, b) => notes[b].timestamp - notes[a].timestamp); 
+
+        if (noteIds.length === 0) {
+            tabsContainerEl.innerHTML = '<p class="text-sm text-gray-500 dark:text-gray-400 mt-4 text-center">Nenhuma conversa. Crie uma nova acima!</p>';
+            return;
+        }
+
+        noteIds.forEach(id => {
+            const note = notes[id];
+            const isActive = id === activeNoteId;
+            const tabEl = document.createElement('button');
+            
+            tabEl.id = `tab-${id}`;
+            tabEl.className = `tab-button w-full text-left p-3 rounded-lg text-sm transition duration-150 ease-in-out ${isActive ? 'active shadow-md text-gray-900' : 'bg-white dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300'}`;
+            
+            const title = note.title.trim() || 'Nova Conversa (Sem Título)';
+            const date = new Date(note.timestamp).toLocaleDateString('pt-PT');
+
+            tabEl.innerHTML = `
+                <div class="truncate font-medium">${title}</div>
+                <div class="text-xs text-gray-500 dark:text-gray-400">${date}</div>
+            `;
+            tabEl.onclick = () => loadNote(id);
+            tabsContainerEl.appendChild(tabEl);
+        });
+    }
+
+    function createNewNote() {
+        const newId = Date.now().toString(); 
+        const newNote = {
+            id: newId,
+            title: 'Nova Conversa',
+            // ATUALIZADO: Incluindo Claude
+            results: { 
+                "Gemini": [], 
+                "ChatGPT": [], 
+                "Mistral": [],
+                "Claude": [] // NOVO
+            },
+            selectedAI: 'Gemini', 
+            timestamp: Date.now()
+        };
+
+        notes[newId] = newNote;
+        // ATUALIZADO: Incluindo Claude
+        unsentQueries[newId] = { "Gemini": '', "ChatGPT": '', "Mistral": '', "Claude": '' }; 
+
+        saveNoteToFirestore(newId, newNote);
+        loadNote(newId);
+        
+        chatPlaceholderEl.textContent = `Clique em Enviar para iniciar a conversa com ${activeAI}.`;
+    }
+    
+    function handleTitleChange() {
+        if (!activeNoteId || !notes[activeNoteId]) return;
+
+        const newTitle = noteTitleEl.value;
+        const note = notes[activeNoteId];
+
+        if (note.title !== newTitle) {
+            note.title = newTitle;
+            note.timestamp = Date.now(); 
+            saveNoteToFirestore(activeNoteId, { title: newTitle, timestamp: note.timestamp });
+            renderTabs(); 
+        }
+    }
+
+    // --- Integração da API do Gemini ---
+
+    async function callGeminiAPI(userQuery, chatHistory, aiName) {
+        // Se a chave API não estiver definida externamente, a chamada falhará.
+        if (!apiKey && typeof __initial_auth_token === 'undefined') {
+            return "ERRO: A Chave API do Gemini (apiKey) não está configurada. Não é possível comunicar com a IA.";
+        }
+        
+        const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
+
+        const contents = chatHistory.map(msg => ({
+            role: msg.role === 'user' ? 'user' : 'model',
+            parts: [{ text: msg.text }]
+        }));
+        
+        contents.push({ role: 'user', parts: [{ text: userQuery }] });
+
+        let systemPrompt;
+
+        // Lógica do Prompt para as diferentes IAs
+        if (aiName === 'ChatGPT') {
+             systemPrompt = "Atue como um especialista criativo e conte histórias vívidas. Responda em português de Portugal. Seja criativo e expansivo. Assuma a persona de um escritor inspirador.";
+        } else if (aiName === 'Mistral') {
+             systemPrompt = "Atue como um analista de dados técnico e detalhista. Responda em português de Portugal. Forneça detalhes técnicos sempre que possível e evite floreados. Assuma a persona de um engenheiro de software.";
+        } else if (aiName === 'Claude') {
+             // NOVO PROMPT para Claude
+             systemPrompt = "Atue como um assistente de raciocínio avançado. Responda em português de Portugal. Concentre-se em análise profunda, ética e clarificação de complexidades. Assuma a persona de um filósofo e pensador.";
+        } else { // Gemini (Padrão)
+             systemPrompt = "Atue como um assistente de escrita e pesquisa prestativo e utilize o modelo Gemini. Responda em português de Portugal. Seja direto e conciso.";
+        }
+
+        const payload = {
+            contents: contents,
+            systemInstruction: {
+                parts: [{ text: systemPrompt }]
+            },
+        };
+
+        const MAX_RETRIES = 5;
+        let delay = 1000;
+
+        for (let i = 0; i < MAX_RETRIES; i++) {
+            try {
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                if (!response.ok) {
+                    if (response.status === 429 && i < MAX_RETRIES - 1) {
+                        await new Promise(resolve => setTimeout(resolve, delay));
+                        delay *= 2; 
+                        continue;
+                    }
+                    throw new Error(`Erro API: ${response.status} ${response.statusText}`);
+                }
+
+                const result = await response.json();
+                const text = result.candidates?.[0]?.content?.parts?.[0]?.text;
+
+                if (text) {
+                    return text;
+                } else {
+                    return "Resposta da AI vazia. (Verifique a consola para erros da API).";
+                }
+
+            } catch (error) {
+                if (i === MAX_RETRIES - 1) {
+                    console.error("Erro fatal após retentativas:", error);
+                    return `ERRO: Não foi possível obter resposta da AI. Detalhes: ${error.message}`;
+                }
+            }
+        }
+        return "ERRO: O limite de retentativas da API foi excedido.";
+    }
+
+    async function handleFollowUp() {
+        if (isGenerating) return; 
+        
+        const userPrompt = followUpQueryEl.value.trim();
+        if (!userPrompt || !activeNoteId || !notes[activeNoteId]) return;
+
+        isGenerating = true;
+        setEditorEnabled(false); 
+
+        const note = notes[activeNoteId];
+        const currentChat = note.results[activeAI];
+        
+        const userMessage = { role: 'user', text: userPrompt, timestamp: Date.now() };
+        currentChat.push(userMessage);
+        
+        renderChatHistory(activeAI);
+
+        const loadingId = 'loading-' + Date.now();
+        // O elemento 'loading' deve ser adicionado *antes* de renderizar o resto para garantir que aparece no fim.
+        const messageEl = document.createElement('div');
+        messageEl.id = loadingId;
+        messageEl.className = `max-w-[80%] p-3 shadow-md text-sm whitespace-pre-wrap message-loading`;
+        messageEl.textContent = 'A AI está a gerar a resposta...';
+        chatHistoryEl.insertBefore(messageEl, chatHistoryEl.firstChild);
+        chatHistoryEl.scrollTop = chatHistoryEl.scrollHeight;
+
+        let aiResponseText;
+        try {
+            const historyForAPI = currentChat.slice(0, -1).map(msg => ({ 
+                role: msg.role, 
+                text: msg.text 
+            }));
+            
+            aiResponseText = await callGeminiAPI(userPrompt, historyForAPI, activeAI);
+        } catch (e) {
+            aiResponseText = `Erro ao ligar para a API: ${e.message}`;
+            console.error(e);
+        } finally {
+            const loadingEl = document.getElementById(loadingId);
+            if (loadingEl) loadingEl.remove();
+            
+            isGenerating = false;
+            setEditorEnabled(true); 
+        }
+
+        const aiMessage = { role: 'ai', text: aiResponseText, timestamp: Date.now() + 1 };
+        currentChat.push(aiMessage); 
+
+        unsentQueries[activeNoteId][activeAI] = userPrompt; 
+
+        renderChatHistory(activeAI);
+
+        // Limpar o campo de input após o envio
+        followUpQueryEl.value = '';
+        toggleClearButton(); 
+
+        await saveNoteToFirestore(activeNoteId, { results: note.results, timestamp: Date.now() });
+    }
+
+    // --- Lógica do Tema Escuro ---
+
+    function setDarkMode(isDark) {
+        if (isDark) {
+            document.body.classList.add('dark');
+            darkModeToggleBtn.innerHTML = `
+                <!-- Ícone do Sol -->
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2"></path><path d="M12 20v2"></path><path d="M4.93 4.93l1.41 1.41"></path><path d="M17.66 17.66l1.41 1.41"></path><path d="M2 12h2"></path><path d="M20 12h2"></path><path d="M6.34 17.66l-1.41 1.41"></path><path d="M19.07 4.93l-1.41 1.41"></path></svg>
+            `; 
+        } else {
+            document.body.classList.remove('dark');
+            darkModeToggleBtn.innerHTML = `
+                <!-- Ícone da Lua -->
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+            `; 
+        }
+        localStorage.setItem('darkMode', isDark);
+    }
+    
+    // --- Inicialização e Autenticação ---
+
+    function setupFirestoreListener() {
+        const collectionRef = getNotesCollectionRef();
+        if (!collectionRef) return;
+        
+        const q = query(collectionRef);
+
+        onSnapshot(q, (snapshot) => {
+            let shouldLoadActiveNote = false;
+
+            snapshot.docChanges().forEach((change) => {
+                const docData = change.doc.data();
+                const docId = change.doc.id;
+                
+                if (change.type === "added" || change.type === "modified") {
+                    // Garante que a estrutura de resultados está completa (para notas mais antigas)
+                    if (!docData.results) {
+                         // ATUALIZADO: Inicializa a estrutura completa com 4 IAs
+                         docData.results = { "Gemini": [], "ChatGPT": [], "Mistral": [], "Claude": [] }; 
+                    } else {
+                        // Garante que todas as chaves estão presentes, especialmente a nova Claude
+                        if (!docData.results.Gemini) docData.results.Gemini = [];
+                        if (!docData.results.ChatGPT) docData.results.ChatGPT = []; 
+                        if (!docData.results.Mistral) docData.results.Mistral = []; 
+                        if (!docData.results.Claude) docData.results.Claude = []; // NOVO: Check para Claude
+                    }
+                    if (!docData.selectedAI) {
+                         docData.selectedAI = 'Gemini';
+                    }
+                    
+                    notes[docId] = { ...docData, id: docId };
+                    if (docId === activeNoteId) {
+                        shouldLoadActiveNote = true; 
+                    }
+                }
+                if (change.type === "removed") {
+                    delete notes[docId];
+                    delete unsentQueries[docId]; 
+                }
+            });
+
+            if (activeNoteId && !notes[activeNoteId]) {
+                activeNoteId = null;
+                clearEditor();
+                setEditorEnabled(false);
+            }
+            if (shouldLoadActiveNote && activeNoteId) {
+                const currentInputValue = followUpQueryEl.value; 
+                renderChatHistory(activeAI);
+                followUpQueryEl.value = currentInputValue; 
+                toggleClearButton();
+            }
+            if (!activeNoteId && Object.keys(notes).length > 0) {
+                 const latestNoteId = Object.keys(notes).sort((a, b) => notes[b].timestamp - notes[a].timestamp)[0];
+                 loadNote(latestNoteId);
+            }
+
+            renderTabs();
+            savingStatusEl.textContent = 'Sincronizado.';
+        }, (error) => {
+            console.error("Erro no listener do Firestore:", error);
+            authStatusEl.textContent = "Erro de sincronização!";
+        });
+    }
+
+    async function initializeAppAndAuth() {
+        if (!firebaseConfig) {
+            setEditorEnabled(false);
+            // Se não houver config, criamos uma nota para que a UI não fique totalmente vazia.
+            if (Object.keys(notes).length === 0) {
+                 createNewNote();
+            }
+            return;
+        }
+
+        app = initializeApp(firebaseConfig);
+        db = getFirestore(app);
+        auth = getAuth(app);
+        
+        let initialAuthDone = false;
+        
+        onAuthStateChanged(auth, (user) => {
+            if (user) {
+                userId = user.uid;
+                authStatusEl.textContent = `Utilizador: ${userId}`;
+                if (!initialAuthDone) {
+                    setupFirestoreListener();
+                    initialAuthDone = true;
+                }
+            } else {
+                userId = null;
+                authStatusEl.textContent = 'Autenticação Anónima.';
+                setEditorEnabled(false);
+            }
+        });
+
+        try {
+            if (initialAuthToken) {
+                await signInWithCustomToken(auth, initialAuthToken);
+            } else {
+                await signInAnonymously(auth);
+            }
+        } catch (error) {
+            console.error("Erro na autenticação:", error);
+            authStatusEl.textContent = "ERRO de Autenticação!";
+            await signInAnonymously(auth); 
+        }
+    }
+
+    // Inicialização ao carregar a página
+    window.onload = function() {
+        initializeAppAndAuth();
+        
+        // --- Inicializa o Tema Escuro ---
+        const isDarkModePreferred = localStorage.getItem('darkMode') === 'true';
+        setDarkMode(isDarkModePreferred);
+        darkModeToggleBtn.addEventListener('click', () => {
+            const isDark = document.body.classList.contains('dark');
+            setDarkMode(!isDark);
+        });
+        
+        // --- Listeners Principais ---
+        newNoteBtn.addEventListener('click', createNewNote);
+        deleteNoteBtn.addEventListener('click', deleteNoteFromFirestore);
+        noteTitleEl.addEventListener('input', handleTitleChange);
+        sendFollowUpBtn.addEventListener('click', handleFollowUp);
+        followUpQueryEl.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                handleFollowUp();
+            }
+        });
+
+        // --- Ações de Input ---
+        
+        copyBtn.addEventListener('click', () => {
+            const textToCopy = followUpQueryEl.value;
+            const tempInput = document.createElement('textarea');
+            tempInput.value = textToCopy;
+            document.body.appendChild(tempInput);
+            tempInput.select();
+            try {
+                const successful = document.execCommand('copy');
+                savingStatusEl.textContent = successful ? 'Texto copiado!' : 'Falha ao copiar (tente Ctrl+C)!';
+            } catch (err) {
+                savingStatusEl.textContent = 'Falha ao copiar (tente Ctrl+C)!';
+            }
+            document.body.removeChild(tempInput);
+            setTimeout(() => savingStatusEl.textContent = 'Pronto.', 2000);
+        });
+
+        pasteBtn.addEventListener('click', () => {
+            followUpQueryEl.focus();
+            savingStatusEl.textContent = 'Por favor, use Ctrl+V (ou Cmd+V) no campo para colar o texto.';
+            setTimeout(() => savingStatusEl.textContent = 'Pronto.', 3000);
+        });
+
+        // Novo listener para o botão de limpar (bola)
+        clearBtnBall.addEventListener('click', () => {
+            followUpQueryEl.value = '';
+            toggleClearButton();
+            followUpQueryEl.dispatchEvent(new Event('input')); 
+            savingStatusEl.textContent = 'Campo limpo.';
+            setTimeout(() => savingStatusEl.textContent = 'Pronto.', 2000);
+        });
+
+        clearTitleBtn.addEventListener('click', () => {
+            noteTitleEl.value = '';
+            handleTitleChange(); 
+            savingStatusEl.textContent = 'Título limpo.';
+            setTimeout(() => savingStatusEl.textContent = 'Pronto.', 2000);
+        });
+        
+        // Atualiza o estado da bola de limpar ao escrever
+        followUpQueryEl.addEventListener('input', () => {
+            toggleClearButton();
+            if (activeNoteId && activeAI && unsentQueries[activeNoteId]) {
+                unsentQueries[activeNoteId][activeAI] = followUpQueryEl.value;
+            }
+        });
+        
+        // --- Troca de Threads AI ---
+        aiButtons.forEach(btn => btn.addEventListener('click', (e) => {
+            if (!activeNoteId || isGenerating) return; 
+
+            const newAI = e.currentTarget.getAttribute('data-ai');
+            if (newAI !== activeAI) {
+                notes[activeNoteId].selectedAI = newAI;
+                saveNoteToFirestore(activeNoteId, { selectedAI: newAI });
+                renderChatHistory(newAI);
+
+                const savedQuery = unsentQueries[activeNoteId]?.[newAI] || '';
+                followUpQueryEl.value = savedQuery;
+                toggleClearButton();
+            }
+        }));
+        
+        clearEditor();
+        setEditorEnabled(false);
+    };
+
+</script>
+
+</body>
+</html>
