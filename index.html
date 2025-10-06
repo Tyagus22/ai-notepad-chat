@@ -292,14 +292,22 @@
     
     // Variáveis globais (fornecidas pelo ambiente - Mantenha se quiser que funcione aqui)
     const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-    // Substitua 'null' pela sua config se estiver a alojar externamente e quiser persistência:
-    const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null; 
+	const firebaseConfig = {
+	  apiKey: "AIzaSyAiSBnJDCmNQgrTeBj1N8tZOIRo3cEMvSM",
+	  authDomain: "ai-notepad-1dd35.firebaseapp.com",
+	  projectId: "ai-notepad-1dd35",
+	  storageBucket: "ai-notepad-1dd35.firebasestorage.app",
+	  messagingSenderId: "915929186169",
+	  appId: "1:915929186169:web:586330535a1008b123f9a8",
+	  measurementId: "G-095LK0TRZ1"
+	};	
+	
     const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
 
-    if (!firebaseConfig) {
-        console.error("Firebase config não encontrado. A persistência de dados não funcionará. A aplicação irá correr sem guardar histórico.");
-        document.getElementById('auth-status').textContent = "AVISO: Histórico desativado (Firebase não configurado).";
-    }
+    if (firebaseConfig.apiKey === "YOUR_API_KEY_HERE") {
+        console.error("Firebase config não encontrado. A persistência de dados (guardar/apagar) não funcionará. SUBSTITUA!");
+        document.getElementById('auth-status').textContent = "AVISO: Histórico/Apagar desativado (Firebase não configurado).";
+    }	
 
     // =================================================================================================
     // --- FIM DA CONFIGURAÇÃO EXTERNA ---
